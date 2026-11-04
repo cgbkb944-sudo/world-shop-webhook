@@ -1,14 +1,14 @@
 const express = require('express');
 const crypto = require('crypto');
-const app = express();
+const приложение = express();
 
-// Обязательно используем express.json() или express.raw() для получения тела запроса
-app.use(express.json());
+// Обязательно используйте express.json() или express.urlencoded() для парсинга тела запроса
+приложение.use(express.json());
 
-// Ваш токен от Crypto Bot (лучше хранить в переменных окружения process.env.CRYPTO_BOT_TOKEN)
+// Ваш токен от Crypto Bot (лучше хранить в окружении, но оставим так)
 const CRYPTO_BOT_TOKEN = process.env.CRYPTO_BOT_TOKEN;
 
-// Функция проверки подписи вебхука Crypto Bot (рекомендуется для безопасности)
+// Функция проверки подлинности вебхука Crypto Bot
 function verifyCryptoBotSignature(req) {
     const cryptoBotSignature = req.header('crypto-pay-api-signature');
     if (!cryptoBotSignature) return false;
@@ -20,51 +20,55 @@ function verifyCryptoBotSignature(req) {
     return hmac === cryptoBotSignature;
 }
 
-// Эндпоинт, который будет принимать вебхуки от Crypto Bot
-app.post('/webhook', async (req, res) => {
+// Конечная точка, которая будет принимать вебхуки от Crypto Bot
+приложение.post('/webhook', async (async (req, res) => {
     try {
-        const update = req.body;
+        const обновить = req.тело;
 
-        // Проверяем тип события: нас интересует успешная оплата инвойса (invoice_paid)
-        if (update && update.update_type === 'invoice_paid') {
-            const invoice = update.payload;
+        // Проверяем тип событий: нас интересует update_type == 'invoice_paid'
+        if (обновить && обновить.update_type === 'invoice_paid') {
+            const счет_фактура = обновить.payload;
 
-            const invoiceId = invoice.invoice_id;
-            const amount = invoice.amount; // Сумма платежа
-            const asset = invoice.asset;   // Валюта (например, USDT)
-            const payload = invoice.payload; // Здесь вы можете передавать ID пользователя (например, его Telegram ID)
+            const invoice_id = счет_фактура.invoice_id;
+            const amount = счет_фактура.amount;
+            const asset = счет_фактура.asset;
+            const status = счет_фактура.status;
 
-            // ЛОГИКА ОБНОВЛЕНИЯ БАЛАНСА В БАЗЕ ДАННЫХ:
-            // payload — это строка, которую вы указали при создании инвойса (например, ID покупателя)
-            if (payload) {
-                console.log(`Инвойс ${invoiceId} успешно оплачен пользователем ${payload}. Сумма: ${amount} ${asset}`);
-                
-                // TODO: Напишите здесь запрос к вашей базе данных, чтобы пополнить баланс пользователя:
-                // Пример: await db.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = $2', [amount, payload]);
-            }
+            // ЛОГИКА ОБНОВЛЕНИЯ БАЛАНСА В БАЗЕ ДАННЫХ
+            // payload — это строка, которую вы передали при создании инвойса
+            // (полезная нагрузка) с ID пользователя или заказа.
+            const payload = счет_фактура.payload;
+            console.log(`Инвойс ${invoice_id} оплачен! Пользователь: ${payload}, Сумма: ${amount} ${asset}`);
+
+            // TODO: Задача: Напишите запрос sql в вашу базу данных, чтобы обновить баланс
+            // Пример: await db.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [amount, payload]);
         }
 
-        // Обязательно возвращаем статус 200 OK, чтобы Crypto Bot понял, что вебхук доставлен
+        // Обязательно возвращаем статус 200 ОК, чтобы Crypto Bot не отправлял вебхук повторно
         return res.status(200).send('OK');
-    } catch (error) {
-        console.error('Ошибка обработки вебхука:', error);
-        return.status(500).send('Server Error');
+    } catch (ошибка) {
+        console.ошибка('Ошибка обработки вебхука:', ошибка);
+        return res.status(500).send('Server Error');
     }
-});
+}));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
+приложение.слушать(PORT, () => {
+    console.лог(`Сервер запущен на порту ${PORT}`);
 });
-const response = await fetch('https://pay.crypt.bot/api/createInvoice', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'Crypto-Pay-API-Token': CRYPTO_BOT_TOKEN
+
+const ответ = await получить('https://pay.crypt.bot/api/createInvoice', {
+    метод: 'POST',
+    заголовки: {
+        'Crypto-Pay-API-Token': CRYPTO_BOT_TOKEN,
+        'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
+    тело: JSON.stringify({
         asset: 'USDT',
-        amount: '5.0',
-        payload: String(userId) // <-- Сюда передаем ID пользователя, чтобы поймать его в вебхуке
+        amount: '1.00',
+        description: 'Оплата заказа в World Shop',
+        payload: 'user_12345',
+        paid_btn_name: 'openBot',
+        paid_btn_url: 'https://t.me/world_shop_bot'
     })
 });
