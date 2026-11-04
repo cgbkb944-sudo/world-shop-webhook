@@ -1,0 +1,13 @@
+{
+  "name": "world-shop-webhook",
+  "version": "1.0.0",
+  "description": "Telegram Web App server and webhook",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "crypto-js": "^4.2.0"
+  }
+}
