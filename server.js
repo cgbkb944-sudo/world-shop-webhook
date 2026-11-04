@@ -56,3 +56,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
+const response = await fetch('https://pay.crypt.bot/api/createInvoice', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Crypto-Pay-API-Token': CRYPTO_BOT_TOKEN
+    },
+    body: JSON.stringify({
+        asset: 'USDT',
+        amount: '5.0',
+        payload: String(userId) // <-- Сюда передаем ID пользователя, чтобы поймать его в вебхуке
+    })
+});
