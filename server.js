@@ -1,45 +1,52 @@
 const express = require('express');
-const crypto = require('crypto');
-const app = express();
+const { Pool } = require('pg');
 
+const app = express();
 app.use(express.json());
 
-const CRYPTO_BOT_TOKEN = process.env.CRYPTO_BOT_TOKEN;
-
-function verifyCryptoBotSignature(req) {
-    const cryptoBotSignature = req.header('crypto-pay-api-signature');
-    if (!cryptoBotSignature) return false;
-
-    const secret = crypto.createHash('sha256').update(CRYPTO_BOT_TOKEN).digest();
-    const checkString = JSON.stringify(req.body);
-    const hmac = crypto.createHmac('sha256', secret).update(checkString).digest('hex');
-
-    return hmac === cryptoBotSignature;
-}
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 app.post('/webhook', async (req, res) => {
-    try {
-        const update = req.body;
+  console.log('Полный пейлоад:', JSON.stringify(req.body));
+  try {
+    const event = req.body;
+    if (event && event.event === 'invoice_paid') {
+      const paymentData = event.payload;
+      const userId = paymentData.user_id;
+      const amount = paymentData.amount;
 
-        if (update && update.update_type === 'invoice_paid') {
-            const invoice = update.payload;
+      if (!userId || !amount) {
+        return res.status(400).json({ error: 'Неверные данные платежа' });
+      }
 
-            const invoiceId = invoice.invoice_id;
-            const amount = invoice.amount;
-            const asset = invoice.asset;
-            const payload = invoice.payload;
+      const query = `
+        UPDATE users
+        SET balance = balance + $1
+        WHERE telegram_id = $2
+      `;
 
-            console.log(`Инвойс ${invoiceId} оплачен! Пользователь: ${payload}, Сумма: ${amount} ${asset}`);
-        }
-
-        return res.status(200).send('OK');
-    } catch (error) {
-        console.error('Ошибка обработки вебхука:', error);
-        return res.status(500).send('Server Error');
+      await pool.query(query, [amount, userId]);
+      console.log(`Баланс пользователя ${userId} успешно пополнен на ${amount}`);
+      return res.status(200).json({ success: true });
     }
+    return res.status(200).json({ status: 'ignored event' });
+  } catch (error) {
+    console.error('Ошибка при обработке вебхука:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
+app.get('/', (req, res) => {
+  res.send('Server is running and connected to DB!');
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
+  console.log(`Сервер запущен на порту ${PORT}`);
 });
+
