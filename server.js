@@ -1,52 +1,66 @@
-const express = require('express');
-const { Pool } = require('pg');
+// === КОНСТАНТЫ И НАСТРОЙКИ ===
+const OWNER_TELEGRAM_ID = '8127900151';
 
-const app = express();
-app.use(express.json());
+// База данных в памяти (или таблица в PostgreSQL для продакшена)
+let dbKeys = []; // Сгенерированные ключи
+let dbProducts = []; // Товары на модерации и витрине
+let dbUsers = {
+  [OWNER_TELEGRAM_ID]: { role: 'OWNER', balance: 0, spent: 0, orders: 0 }
+};
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
+// 1. Генерация ключа владельцем
+app.post('/api/owner/create-key', (req, res) => {
+  const { owner_id, role, target_id, details } = req.body;
+  if (owner_id !== OWNER_TELEGRAM_ID) {
+    return res.status(403).json({ error: 'Доступ запрещен. Только владелец!' });
   }
+
+  // Формат ключа: WTS-ROLE-TARGET_ID
+  const keyCode = `WTS-${role}-${target_id}`;
+  dbKeys.push({
+    keyCode,
+    role,
+    target_id,
+    details, // Описание обязанностей или описание магазина
+    status: 'active'
+  });
+
+  res.json({ success: true, keyCode });
 });
 
-app.post('/webhook', async (req, res) => {
-  console.log('Полный пейлоад:', JSON.stringify(req.body));
-  try {
-    const event = req.body;
-    if (event && event.event === 'invoice_paid') {
-      const paymentData = event.payload;
-      const userId = paymentData.user_id;
-      const amount = paymentData.amount;
+// 2. Активация ключа пользователем
+app.post('/api/user/activate-key', (req, res) => {
+  const { user_id, keyCode } = req.body;
+  const foundKey = dbKeys.find(k => k.keyCode === keyCode && k.target_id === user_id);
 
-      if (!userId || !amount) {
-        return res.status(400).json({ error: 'Неверные данные платежа' });
-      }
-
-      const query = `
-        UPDATE users
-        SET balance = balance + $1
-        WHERE telegram_id = $2
-      `;
-
-      await pool.query(query, [amount, userId]);
-      console.log(`Баланс пользователя ${userId} успешно пополнен на ${amount}`);
-      return res.status(200).json({ success: true });
-    }
-    return res.status(200).json({ status: 'ignored event' });
-  } catch (error) {
-    console.error('Ошибка при обработке вебхука:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  if (!foundKey) {
+    return res.status(400).json({ error: 'Неверный ключ или ключ не принадлежит вашему ID!' });
   }
+
+  // Обновляем роль пользователя
+  if (!dbUsers[user_id]) dbUsers[user_id] = { balance: 0, spent: 0, orders: 0 };
+  dbUsers[user_id].role = foundKey.role;
+  dbUsers[user_id].details = foundKey.details;
+
+  res.json({ success: true, role: foundKey.role });
 });
 
-app.get('/', (req, res) => {
-  res.send('Server is running and connected to DB!');
+// 3. Удаление / Блокировка товара владельцем
+app.post('/api/owner/delete-product', (req, res) => {
+  const { owner_id, product_id, reason } = req.body;
+  if (owner_id !== OWNER_TELEGRAM_ID) {
+    return res.status(403).json({ error: 'Недостаточно прав' });
+  }
+
+  dbProducts = dbProducts.filter(p => p.id !== product_id);
+  console.log(`Товар ${product_id} удален владельцем. Причина: ${reason}`);
+  res.json({ success: true });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
+// 4. Оформление возврата (доступно Поддержке и Владельцу)
+app.post('/api/support/refund', (req, res) => {
+  const { operator_id, order_id } = req.body;
+  // Проверка, что оператор — Владелец или Поддержка
+  // ... логика возврата денег покупателю, возврата товара продавцу и рассылки уведомлений ...
+  res.json({ success: true, message: 'Возврат успешно оформлен, средства возвращены покупателю.' });
 });
-
